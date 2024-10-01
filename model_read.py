@@ -1,29 +1,18 @@
-from supabase import create_client, Client
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Supabase connection details
-SUPABASE_URL = "https://pwhuldcdbdjtutkapfdu.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3aHVsZGNkYmRqdHV0a2FwZmR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mjc3MTg4MTAsImV4cCI6MjA0MzI5NDgxMH0.udgaH1AxkAWfXKkFuqaL2kIfSO1VxoFSWUFt-5UnzOc"
+# Load user details from Details.csv
+user_details_df = pd.read_csv('Details.csv')
 
-# Create a Supabase client
-def get_supabase_client():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# Fetch user details from Supabase
-def fetch_user_details(supabase: Client, user_id: str):
-    response = supabase.table('user_details').select('*').eq('user_id', user_id).execute()
-    return response.data[0]  # Returns a dictionary of user details
-
-# Dataset
+# Load the dataset of government schemes
 df = pd.read_csv('Dataset.csv')
 
-# Feature Creation
+# Combine fields for feature creation
 df['combined_features'] = df['Details'] + ' ' + df['Benefits'] + ' ' + df['Eligibility']
 
-# Vectors
+# Vectorize the combined text
 vectorizer = TfidfVectorizer(stop_words='english')
 X = vectorizer.fit_transform(df['combined_features'])
 
@@ -31,50 +20,36 @@ X = vectorizer.fit_transform(df['combined_features'])
 kmeans = KMeans(n_clusters=5, random_state=42)
 df['cluster'] = kmeans.fit_predict(X)
 
-# Cross-reference user details with the schemes dataset for eligibility
-def find_matching_schemes(user_details):
-    matching_schemes = []
+# Function to create user query based on their details
+def create_user_query(user_details):
+    occupation = user_details['Occupation']
+    income = user_details['Income']
+    age = user_details['Age']
+    category = user_details['Category']
+    family_members = user_details['Family_Members']
     
-    for _, scheme in df.iterrows():
-        # Check if the user qualifies for the scheme based on income, occupation, age, etc.
-        if user_details['income'] <= float(scheme['Income Limit']) and \
-           user_details['occupation'] in scheme['Eligible Occupation'] and \
-           user_details['age'] >= int(scheme['Min Age']) and \
-           user_details['age'] <= int(scheme['Max Age']):
-            matching_schemes.append(scheme)
-
-    return pd.DataFrame(matching_schemes)
-
-# Function to recommend schemes based on user input and fetched user details
-def recommend_schemes(user_input, user_details):
-    # Find schemes based on user details
-    eligible_schemes = find_matching_schemes(user_details)
+    # Create a dynamic query string based on user attributes
+    user_query = f"I am a {age} year old {occupation} earning {income} in the {category} category with {family_members} family members."
     
-    if eligible_schemes.empty:
-        return "No matching schemes found based on eligibility."
+    return user_query
 
-    # Vectorize user input
+# Function to recommend schemes based on the dynamically generated user query
+def recommend_schemes(user_input):
     user_input_vec = vectorizer.transform([user_input])
-    
-    # Calculate similarity
-    X_eligible = vectorizer.transform(eligible_schemes['combined_features'])
-    similarities = cosine_similarity(user_input_vec, X_eligible).flatten()
-    
-    # Get top 5 most similar schemes
-    indices = similarities.argsort()[-5:][::-1]
-    return eligible_schemes.iloc[indices][['Scheme Name', 'Category', 'Details', 'Benefits', 'Eligibility']]
+    similarities = cosine_similarity(user_input_vec, X).flatten()
+    indices = similarities.argsort()[-5:][::-1]  # Top 5 schemes
+    return df.iloc[indices][['Scheme Name', 'Category', 'Details', 'Benefits', 'Eligibility']]
 
 # Example usage
 if __name__ == "__main__":
-    # Initialize Supabase client
-    supabase = get_supabase_client()
-
-    # Example user details fetch (replace 'user-unique-id' with actual user ID)
-    user_details = fetch_user_details(supabase, "user-unique-id")
-    
-    # Example user query
-    user_query = "I am a mother and I want my daughter to get good education"
-    
-    # Fetch recommended schemes based on user input and details
-    recommended_schemes = recommend_schemes(user_query, user_details)
-    print(recommended_schemes)
+    # Iterate over each user in the Details CSV
+    for _, user_details in user_details_df.iterrows():
+        print(f"Recommendations for {user_details['Name']}:")
+        
+        # Create a dynamic user query from user details
+        user_query = create_user_query(user_details)
+        
+        # Fetch recommended schemes based on the generated query
+        recommended_schemes = recommend_schemes(user_query)
+        print(recommended_schemes)
+        print("\n" + "="*80 + "\n")
