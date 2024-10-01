@@ -1,0 +1,1 @@
+ C:\\Appdev\\Codaisance\\schemefindr\\.dart_tool\\flutter_build\\41311b65c34ae17df2b063cd7501250d\\native_assets.yaml: 
